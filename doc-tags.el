@@ -82,7 +82,13 @@ backups in your database after it has been created, run
   "Return tags for DOC."
   (ensure-list (plist-get
                 (triples-get-subject doc-tags-db doc)
-                :tagged/tags)))
+                :doc/tags)))
+
+(defun doc-tags-get-tag-members (tag)
+  "Return docs for TAG."
+  (plist-get
+   (triples-get-subject doc-tags-db tag)
+   :tag/members))
 
 ;;; add doc to db
 
@@ -159,8 +165,7 @@ backups in your database after it has been created, run
   (delq nil
         (mapcar (lambda (tag)
                   (unless
-                      (triples-search doc-tags-db
-                                      'tagged/tags tag)
+                      (triples-get-subject doc-tags-db tag)
                     tag))
                 (doc-tags-all-tags))))
 
@@ -214,8 +219,8 @@ With optional PROMPT value."
 (defun doc-tags-annotate-tag (tag)
   "Annotation function for TAG candidates."
   (let ((count (length
-                (triples-search doc-tags-db
-                                'tagged/tags tag))))
+                (doc-tags-get-tag-members
+                 (substring-no-properties tag)))))
     (format " [%s]" count)))
 
 (defun doc-tags-select-doc (&optional docs prompt initial)
