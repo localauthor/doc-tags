@@ -49,12 +49,10 @@ backups in your database after it has been created, run
 
 (defun doc-tags-add-schema ()
   "Add schema necessary for doc-tags to function."
-  (triples-add-schema doc-tags-db
-                      'doc '(name :base/unique t :base/type string)
-                      '(annotation :base/unique t :base/type string))
-  (triples-add-schema doc-tags-db 'tagged '(tags :base/type string))
-  (triples-add-schema doc-tags-db 'tag '(tagged :base/virtual-reversed tagged/tags)))
-
+  (triples-add-schema doc-tags-db 'doc
+                      '(tags :base/type string))
+  (triples-add-schema doc-tags-db 'tag
+                      '(members :base/virtual-reversed doc/tags)))
 
 ;;; helper functions
 
@@ -82,12 +80,6 @@ backups in your database after it has been created, run
   (plist-get (triples-get-subject doc-tags-db doc)
              :doc/name))
 
-(defun doc-tags-get-doc-annotation (doc)
-  "Return annotation for DOC."
-  (plist-get
-   (triples-get-subject doc-tags-db doc)
-   :doc/annotation))
-
 (defun doc-tags-get-doc-tags (doc)
   "Return tags for DOC."
   (ensure-list (plist-get
@@ -107,13 +99,9 @@ backups in your database after it has been created, run
                      (file-name-nondirectory doc)))
          (tags (completing-read-multiple
                 (format "Tags for %s: " doc-name)
-                (doc-tags-all-tags) nil nil))
-         (annot (read-string (format "Annot for %s: " doc-name))))
+                (doc-tags-all-tags) nil nil)))
     (triples-set-subject doc-tags-db doc
-                         `(doc :name ,doc-name
-                               :annotation ,annot))
-    (triples-set-type doc-tags-db doc
-                      'tagged :tags tags)
+                         `(doc :tags ,tags))
     (dolist (tag tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
@@ -243,82 +231,44 @@ With optional PROMPT and INITIAL value."
        (if (eq action 'metadata)
            `(metadata
              (category . doc-tags-doc)
+             (group-function . doc-tags-group-function)
              (annotation-function . doc-tags-annotate-doc))
          (complete-with-action action docs string predicate)))
-     nil t initial)))
+     nil t initial 'doc-tags-doc-history)))
+
+(defun doc-tags-group-function (doc transform)
+  "TRANSFORM completion candidate DOC."
+  (if transform
+      (file-name-nondirectory doc)
+    (file-name-extension doc)))
 
 (defun doc-tags-annotate-doc (doc)
   "Annotation function for DOC candidates."
-  (let* ((annot (doc-tags-get-doc-annotation doc))
+  (let* ((doc (substring-no-properties doc))
          (tags (doc-tags-get-doc-tags doc))
          (format-tags (doc-tags-format-tags tags)))
-    (if (not (string-empty-p annot))
-        (format " | tags: %s | annot: %s" format-tags annot)
-      (format " | tags: %s |" format-tags))))
-
-
-;; tests
-
-;; (plist-get
-;;  (triples-get-subject doc-tags-db "ezeras1.jpg")
-;;  :doc/annotation)
-
-
-;; (triples-get-subject doc-tags-db "twain slides.org")
-
-
-;; ;; docs with tags
-;; (triples-with-predicate doc-tags-db 'tagged/tags)
-
-
-;; (triples-subjects-of-type doc-tags-db 'doc)
-
-;; (triples-subjects-with-predicate-object doc-tags-db 'doc/file "ezeras1.jpg")
-
-;; (triples-with-predicate doc-tags-db 'tagged/tag)
-
-;; (triples-with-predicate doc-tags-db 'doc/annotation)
-
-
-;; (triples-search doc-tags-db 'tagged/tags "class")
-
-
-;; (triples-db-select doc-tags-db nil 'tagged/tags)
-
-
-
-;;; functions todo
-
-;; remove tag from db
-
-;; find doc by name
-
-;; find doc(s) by annotation
-
+    (format " | tags: %s" format-tags)))
 
 
 ;;; embark integration
 
 (defvar embark-file-map)
 (defvar embark-keymap-alist)
+(defvar embark-default-action-overrides)
 
 (defvar doc-tags-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map embark-file-map)
     (define-key map (kbd "d") #'doc-tags-remove-doc)
+    (define-key map (kbd "a") #'doc-tags-add-tag)
+    (define-key map (kbd "r") #'doc-tags-remove-tag)
     map)
   "Keymap for Embark doc-tags actions.")
 
 (add-to-list 'embark-keymap-alist '(doc-tags-doc . doc-tags-map))
 
-;; (add-to-list 'embark--associated-file-fn-alist
-;;              '(doc-tags-doc . doc-tags-get-doc-file))
-
-;; (defun doc-tags--embark-transformer (type target)
-;;   (cons type (doc-tags-get-doc-file target)))
-
-;; (add-to-list 'embark-transformer-alist
-;;              '(doc-tags-doc . doc-tags--embark-transformer))
+(add-to-list 'embark-default-action-overrides
+             '(doc-tags-doc . doc-tags-open-doc))
 
 (provide 'doc-tags)
 ;;; doc-tags.el ends here
