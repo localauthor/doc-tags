@@ -58,7 +58,6 @@ backups in your database after it has been created, run
 
 (defun doc-tags-all-docs ()
   "Return all docs in doc-tags."
-  (doc-tags-connect)
   (triples-subjects-of-type doc-tags-db 'doc))
 
 (defun doc-tags-untagged-docs ()
@@ -72,7 +71,6 @@ backups in your database after it has been created, run
 
 (defun doc-tags-all-tags ()
   "Return list of all tags."
-  (doc-tags-connect)
   (triples-subjects-of-type doc-tags-db 'tag))
 
 (defun doc-tags-get-doc-name (doc)
@@ -111,7 +109,6 @@ backups in your database after it has been created, run
 (defun doc-tags-remove-doc (doc)
   "Remove DOC from database."
   (interactive (list (doc-tags-select-doc)))
-  (doc-tags-connect)
   (when (y-or-n-p (format "Remove \“%s\” from database?" doc))
     (triples-delete-subject doc-tags-db doc)
     (message "Removed \“%s\” from database" doc)
@@ -224,6 +221,7 @@ With optional PROMPT value."
 (defun doc-tags-select-doc (&optional docs prompt initial)
   "Completing read function for selecting DOCS.
 With optional PROMPT and INITIAL value."
+  (doc-tags-connect)
   (let ((docs (or docs (doc-tags-all-docs))))
     (completing-read
      (or prompt "Select doc: ")
