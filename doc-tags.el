@@ -178,7 +178,40 @@ backups in your database after it has been created, run
 
 ;;; find files
 
-(defun doc-tags-find-file (doc)
+(defun doc-tags-find-file ()
+  "Find `doc-tag’ docs by tag.
+Boolean operator AND by default; use prefix arg for OR."
+  (interactive)
+  (let* ((bool (if (or current-prefix-arg
+                       (eq this-command 'doc-tags-find-file-or))
+                   (cons " OR " "ANY")
+                 (cons " AND " "ALL")))
+         (tags (doc-tags-select-tag
+                nil (format "Find docs with %s tags: " (cdr bool))))
+         (all-docs (mapcar #'doc-tags-get-tag-members tags))
+         (docs (cond ((string= (car bool) " OR ")
+                      (seq-uniq
+                       (flatten-tree
+                        (mapcar #'doc-tags-get-tag-members tags))))
+                     ((eq (car bool) 'and)
+                      (seq-reduce #'seq-intersection
+                                  all-docs
+                                  (car all-docs))))))
+    (if docs
+        (doc-tags-open-doc (doc-tags-select-doc docs))
+      (error "No docs with tags: %s" (string-join tags (car bool))))))
+
+(defun doc-tags-find-file-and ()
+  "Find `doc-tag’ docs using AND operator."
+  (interactive)
+  (doc-tags-find-file))
+
+(defun doc-tags-find-file-or ()
+  "Find `doc-tag’ docs using OR operator."
+  (interactive)
+  (doc-tags-find-file))
+
+(defun doc-tags-open-doc (doc)
   "Find DOC in `doc-tags-db’."
   (interactive (list (doc-tags-select-doc)))
   (if (file-exists-p doc)
