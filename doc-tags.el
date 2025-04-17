@@ -91,6 +91,8 @@ backups in your database after it has been created, run
   "Add DOC to `doc-tags-db’."
   (interactive "fAdd doc: ")
   (doc-tags-connect)
+  (when (triples-get-subject doc-tags-db doc)
+    (user-error "Selected file already in database \“%s\”" doc-tags-db))
   (let* ((doc-name (if (file-directory-p doc)
                        (file-name-nondirectory
                         (directory-file-name
