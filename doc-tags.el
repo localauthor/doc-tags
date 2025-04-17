@@ -127,8 +127,8 @@ backups in your database after it has been created, run
   (let* ((add-tags (completing-read-multiple
                     (format "Tags for %s: " doc)
                     (doc-tags-all-tags) nil nil))
-         (doc-tags (delete-dups (flatten-list (list add-tags (doc-tags-get-doc-tags doc))))))
-    (triples-set-type doc-tags-db doc 'tagged :tags doc-tags)
+         (doc-tags (seq-uniq (flatten-tree (list add-tags (doc-tags-get-doc-tags doc))))))
+    (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
     (dolist (tag add-tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
@@ -142,11 +142,11 @@ backups in your database after it has been created, run
     (dolist (tag del-tags)
       (setq doc-tags (delete tag doc-tags)))
     (if doc-tags
-        (triples-set-type doc-tags-db doc 'tagged :tags doc-tags)
+        (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
       (if (y-or-n-p "Untagged doc. Delete from database [y]? Add other tag [n]?")
           (doc-tags-remove-doc doc)
         (setq doc-tags (doc-tags-select-tag))
-        (triples-set-type doc-tags-db doc 'tagged :tags doc-tags))))
+        (triples-set-type doc-tags-db doc 'doc :tags doc-tags))))
   (doc-tags-delete-empty-tags))
 
 (defun doc-tags-format-tags (tags)
@@ -184,19 +184,6 @@ backups in your database after it has been created, run
   (if (file-exists-p doc)
       (find-file doc)
     (error "File not found: %s" doc)))
-
-(defun doc-tags-find-file-by-tag ()
-  "Find file by tag."
-  (interactive)
-  (doc-tags-connect)
-  (if-let* ((tag (doc-tags-select-tag))
-            (docs (mapcar #'car
-                          (triples-search doc-tags-db
-                                          'tagged/tags tag)))
-            (doc (doc-tags-select-doc docs)))
-      (doc-tags-find-file doc)
-    (error "No files for tag: \“%s\”" tag)))
-
 
 ;;; completing read functions
 
