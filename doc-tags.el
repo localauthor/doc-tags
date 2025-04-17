@@ -1,4 +1,4 @@
-;;; doc-tags.el --- Create database of tagged file-system documents   -*- lexical-binding: t; -*-
+;;; doc-tags.el --- Create sqlite database of tagged file-system documents   -*- lexical-binding: t; -*-
 
 ;;; Commentary:
 
@@ -7,9 +7,10 @@
 (require 'triples)
 (require 'triples-backups)
 
-;; add doc-tags-db-dir, for switching databases?
-
-(defvar doc-tags-db-file nil)
+(defcustom doc-tags-db-file nil
+  "Location of doc-tags database file."
+  :type '(file)
+  :group 'doc-tags)
 
 (defvar doc-tags-db nil
   "Live sqlite database connection.")
@@ -40,8 +41,8 @@ backups in your database after it has been created, run
       (triples-backups-setup doc-tags-db doc-tags-default-num-backups
                              doc-tags-default-backups-strategy))))
 
-(defun doc-tags-close ()
-  "Close the gr-db connection."
+(defun doc-tags-close-db ()
+  "Close current `doc-tags-db’ connection."
   (interactive)
   (when doc-tags-db
     (triples-close doc-tags-db)
@@ -85,7 +86,7 @@ backups in your database after it has been created, run
    (triples-get-subject doc-tags-db tag)
    :tag/members))
 
-;;; add doc to db
+;;; doc functions
 
 (defun doc-tags-add-doc (doc)
   "Add DOC to `doc-tags-db’."
@@ -106,9 +107,6 @@ backups in your database after it has been created, run
     (dolist (tag tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
-
-;;; remove doc from db
-
 (defun doc-tags-remove-doc (doc)
   "Remove DOC from database."
   (interactive (list (doc-tags-select-doc)))
@@ -117,7 +115,6 @@ backups in your database after it has been created, run
     (message "Removed \“%s\” from database" doc)
     (when doc-tags-auto-delete-empty-tags
       (doc-tags-delete-empty-tags))))
-
 
 ;;; tag functions
 
@@ -132,13 +129,11 @@ backups in your database after it has been created, run
     (dolist (tag add-tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
-(defun doc-tags-delete-doc-tag (doc)
-  "Delete tag from DOC."
+(defun doc-tags-remove-tag (doc)
+  "Remove tag from DOC."
   (interactive (list (doc-tags-select-doc)))
   (let* ((doc-tags (doc-tags-get-doc-tags doc))
-         (del-tags (completing-read-multiple
-                    "Delete tags: "
-                    doc-tags)))
+         (del-tags (doc-tags-select-tag doc "Remove tag: ")))
     (dolist (tag del-tags)
       (setq doc-tags (delete tag doc-tags)))
     (if doc-tags
@@ -168,12 +163,12 @@ backups in your database after it has been created, run
 
 (defun doc-tags-delete-empty-tags ()
   "Delete all empty tags in doc-tags."
-  (interactive)
   (when-let* ((empties (doc-tags-empty-tags)))
     (when (y-or-n-p (format "Delete empty tags:\n%s?"
                             (doc-tags-format-tags empties)))
       (mapc
-       (lambda (tag) (triples-delete-subject doc-tags-db tag))
+       (lambda (tag)
+         (triples-delete-subject doc-tags-db tag))
        empties))))
 
 ;;; find files
@@ -220,18 +215,24 @@ Boolean operator AND by default; use prefix arg for OR."
 
 ;;; completing read functions
 
-(defun doc-tags-select-tag ()
+(defvar doc-tags-tag-history nil)
+(defvar doc-tags-doc-history nil)
+
+(defun doc-tags-select-tag (&optional doc prompt)
   "Completing read function for selecting a tag.
-With optional PROMPT value."
-  (let ((tags (doc-tags-all-tags)))
-    (completing-read
-     "Select tag: "
+With optional DOC and PROMPT values."
+  (doc-tags-connect)
+  (let ((tags (or (doc-tags-get-doc-tags doc)
+                  (doc-tags-all-tags))))
+    (completing-read-multiple
+     (or prompt
+         "Select tag: ")
      (lambda (string predicate action)
        (if (eq action 'metadata)
            `(metadata
              (annotation-function . doc-tags-annotate-tag))
          (complete-with-action action tags string predicate)))
-     nil t)))
+     nil t nil 'doc-tags-tag-history)))
 
 (defun doc-tags-annotate-tag (tag)
   "Annotation function for TAG candidates."
