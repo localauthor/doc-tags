@@ -73,11 +73,6 @@ backups in your database after it has been created, run
   "Return list of all tags."
   (triples-subjects-of-type doc-tags-db 'tag))
 
-(defun doc-tags-get-doc-name (doc)
-  "Return name for DOC."
-  (plist-get (triples-get-subject doc-tags-db doc)
-             :doc/name))
-
 (defun doc-tags-get-doc-tags (doc)
   "Return tags for DOC."
   (ensure-list (plist-get
