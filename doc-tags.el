@@ -94,14 +94,17 @@ backups in your database after it has been created, run
                 (triples-get-subject doc-tags-db doc)
                 :tagged/tags)))
 
-
 ;;; add doc to db
 
 (defun doc-tags-add-doc (doc)
   "Add DOC to `doc-tags-db’."
   (interactive "fAdd doc: ")
   (doc-tags-connect)
-  (let* ((doc-name (file-name-nondirectory doc))
+  (let* ((doc-name (if (file-directory-p doc)
+                       (file-name-nondirectory
+                        (directory-file-name
+                         (file-name-directory doc)))
+                     (file-name-nondirectory doc)))
          (tags (completing-read-multiple
                 (format "Tags for %s: " doc-name)
                 (doc-tags-all-tags) nil nil))
