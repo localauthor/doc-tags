@@ -277,7 +277,7 @@ With optional PROMPT and INITIAL value."
 (defvar embark-keymap-alist)
 (defvar embark-default-action-overrides)
 
-(defvar doc-tags-map
+(defvar doc-tags-file-map
   (let ((map (make-sparse-keymap)))
     (set-keymap-parent map embark-file-map)
     (define-key map (kbd "d") #'doc-tags-remove-doc)
@@ -286,10 +286,18 @@ With optional PROMPT and INITIAL value."
     map)
   "Keymap for Embark doc-tags actions.")
 
-(add-to-list 'embark-keymap-alist '(doc-tags-doc . doc-tags-map))
+(add-to-list 'embark-keymap-alist '(doc-tags-doc . doc-tags-file-map))
 
 (add-to-list 'embark-default-action-overrides
              '(doc-tags-doc . doc-tags-open-doc))
+
+(defvar doc-tags-tag-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "e") #'doc-tags-edit-tag)
+    map)
+  "Keymap for Embark doc-tags actions.")
+
+(add-to-list 'embark-keymap-alist '(doc-tags-tag . doc-tags-tag-map))
 
 (provide 'doc-tags)
 ;;; doc-tags.el ends here
