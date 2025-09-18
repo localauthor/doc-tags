@@ -1,0 +1,54 @@
+#+title: doc-tags.el - Simple, document tagging in Emacs
+#+author: Grant Rosson
+#+language: en
+
+* doc-tags.el
+
+Introducing [[https://github.com/localauthor/doc-tags][=doc-tags.el=]]: a simple, low-overhead Emacs package for tagging and retrieving files using a SQLite backend.
+
+=doc-tags= is a straightforward package that lets you:
+- Tag any file or directory on your computer, with one or more tags
+- Quickly find and open files by tag, using “AND” (all tags) or “OR” (any tag) search
+- Update, rename, or remove tags interactively
+- Keep your tagged-doc database in a single regular file
+
+You add only what matters to you: notes, readings, drafts, reference folders, syllabi, whatever. Tags are just Emacs strings — no renaming or relocating files, no global search, no magic.
+
+* Nota Bene
+
+In general, I am skeptical about the long-term use value of tags. I find them flimsy. I much prefer organizing files in directories, and relying on searching to find what I’m looking for.
+
+With that in mind, =doc-tags= is not — /and is not meant to be/ — a replacement for file management writ large. I use [[https://devontechnologies.com][devonthink]] for that. It is a huge directory structure of PDFs and lecture notes, organized within the devonthink program in all sort of useful ways, for long-term storage and findability, but otherwise — for all intents and purposes — a jumble of files in a maze of directories.
+
+The major downside of devonthink, for me, is that its database structure is not accessible from inside Emacs. (Yet?) Sure, I can use a recursive search to plumb the depths of my devonthink database for what I think I need, but that’s a somewhat crude approach.
+
+So, I wrote =doc-tags= as a middle-ground, ad-hoc solution, allowing me to assign tags to files in disparate locations across my file system, wherever they may be, even deep within my devonthink database.
+
+Because of my deep skepticism of tags, I mostly use =doc-tags= when working on fleeting tasks, like preparing for a class or working on short-term writing projects. When the task is finished, I just delete the tags I no longer need and move on without remorse. No need to create a new directory, copy or symlink files. Just quick and dirty tagging, for the moment.
+
+* How to set it up
+
+=doc-tags.el= isn’t up on M/ELPA, so install directly from GitHub:
+
+#+begin_src emacs-lisp
+(use-package doc-tags
+  :ensure nil
+  :vc (:url "https://github.com/localauthor/doc-tags")
+  :custom
+  (doc-tags-db-file "~/.emacs.d/var/doc-tags.sqlite") ;; pick your database location
+  :config
+  (doc-tags-connect) ;; opens/creates the database and initializes the schema
+  )
+#+end_src
+
+You’ll also need [[https://github.com/ahyatt/triples][=triples=]] (which manages the SQLite database and backups) and =sqlite3= available to Emacs.
+
+* How does it work?
+
+- To add a document: =M-x doc-tags-add-doc= (prompts for a file, then for one or more tags)
+- To search by tag: =M-x doc-tags-find-file= (AND logic by default; use C-u for OR search)
+- To add/remove tags: =M-x doc-tags-add-tag= / =M-x doc-tags-remove-tag=
+ To edit/rename tags: =M-x doc-tags-edit-tag=
+- To remove a document: =M-x doc-tags-remove-doc=
+
+Most commands offer smart completion (minibuffer with tag annotations, document previews); if you use [[https://github.com/oantolin/embark][=embark=]], doc-tags offers a keymap for quick actions on tags and docs.
