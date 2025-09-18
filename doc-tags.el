@@ -39,8 +39,6 @@
 (defvar doc-tags-db nil
   "Live sqlite database connection.")
 
-(defvar doc-tags-auto-delete-empty-tags t)
-
 (defconst doc-tags-default-num-backups 5
   "The number of backups to set when first using the database.
 This can be overwritten by other database users, and will not be
@@ -112,61 +110,99 @@ backups in your database after it has been created, run
 
 ;;; doc functions
 
-(defun doc-tags-add-doc (doc)
-  "Add DOC to `doc-tags-db’."
+(defun doc-tags-add-doc (doc &optional tags)
+  "Add DOC to `doc-tags-db’.
+Optionals TAGS"
   (interactive "fAdd doc: ")
+  (setq doc (expand-file-name doc))
   (doc-tags-connect)
-  (when (triples-get-subject doc-tags-db doc)
+  (when (triples-get-subject doc-tags-db doc) ;; need to skip this when relocating a file
     (user-error "Selected file already in database \“%s\”" doc-tags-db))
   (let* ((doc-name (if (file-directory-p doc)
                        (file-name-nondirectory
                         (directory-file-name
                          (file-name-directory doc)))
                      (file-name-nondirectory doc)))
-         (tags (completing-read-multiple
-                (format "Tags for %s: " doc-name)
-                (doc-tags-all-tags) nil nil)))
+         (tags (or tags
+                   (completing-read-multiple
+                    (format "Tags for %s: " doc-name)
+                    (doc-tags-all-tags) nil nil))))
     (triples-set-subject doc-tags-db doc
                          `(doc :tags ,tags))
     (dolist (tag tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
+(defun doc-tags-locate-doc (doc)
+  "Locate file for missing DOC."
+  (let ((tags (doc-tags-get-doc-tags doc))
+        (new-doc (progn
+                   (file-name-history--add doc)
+                   (read-file-name "Find file: "
+                                   (file-name-directory doc) nil t))))
+    (doc-tags-add-doc new-doc tags)
+    (doc-tags-remove-doc doc)))
+
 (defun doc-tags-remove-doc (doc)
   "Remove DOC from database."
   (interactive (list (doc-tags-select-doc)))
-  (when (y-or-n-p (format "Remove \“%s\” from database?" doc))
+  (when (y-or-n-p (format "Remove from database: \“%s\”?" doc))
     (triples-delete-subject doc-tags-db doc)
     (message "Removed \“%s\” from database" doc)
-    (when doc-tags-auto-delete-empty-tags
-      (doc-tags-delete-empty-tags))))
+    (doc-tags-delete-empty-tags)))
 
 ;;; tag functions
 
-(defun doc-tags-add-tag (doc)
-  "Add tag to DOC."
+(defun doc-tags-add-tag (doc &optional tags)
+  "Add TAGS to DOC."
   (interactive (list (doc-tags-select-doc)))
-  (let* ((add-tags (completing-read-multiple
-                    (format "Tags for %s: " doc)
-                    (doc-tags-all-tags) nil nil))
+  (let* ((add-tags (or tags
+                       (completing-read-multiple
+                        (format "Tags for %s: "
+                                (file-name-nondirectory doc))
+                        (doc-tags-all-tags) nil nil)))
          (doc-tags (seq-uniq (flatten-tree (list add-tags (doc-tags-get-doc-tags doc))))))
     (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
     (dolist (tag add-tags)
       (triples-set-type doc-tags-db tag 'tag))))
 
-(defun doc-tags-remove-tag (doc)
-  "Remove tag from DOC."
+(defun doc-tags-remove-tag (doc &optional tag edit-tag)
+  "Remove tag from DOC.
+With option TAG and EDIT-TAG."
   (interactive (list (doc-tags-select-doc)))
   (let* ((doc-tags (doc-tags-get-doc-tags doc))
-         (del-tags (doc-tags-select-tag doc "Remove tag: ")))
+         (del-tags (or tag
+                       (doc-tags-select-tag doc-tags "Remove tag: "))))
     (dolist (tag del-tags)
       (setq doc-tags (delete tag doc-tags)))
+    (unless (or edit-tag
+                (y-or-n-p (format "Remove tags\n%s\nfrom \“%s\”?"
+                                  (doc-tags-format-tags del-tags)
+                                  (file-name-nondirectory doc))))
+      (user-error "Tag removal cancelled"))
     (if doc-tags
         (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
-      (if (y-or-n-p "Untagged doc. Delete from database [y]? Add other tag [n]?")
-          (doc-tags-remove-doc doc)
-        (setq doc-tags (doc-tags-select-tag))
-        (triples-set-type doc-tags-db doc 'doc :tags doc-tags))))
-  (doc-tags-delete-empty-tags))
+      (triples-set-subject doc-tags-db doc)
+      (unless edit-tag
+        (if (y-or-n-p "Untagged doc. Delete from database [y]? Add other tag [n]?")
+            (doc-tags-remove-doc doc)
+          (setq doc-tags (doc-tags-select-tag))
+          (doc-tags-add-tag doc doc-tags))))
+    (unless edit-tag
+      (doc-tags-delete-empty-tags))))
+
+(defun doc-tags-edit-tag (tag)
+  "Edit doc-tag TAG."
+  (interactive (list (completing-read
+                      "Edit doc-tag: "
+                      (doc-tags-all-tags)
+                      nil t)))
+  (let ((docs (doc-tags-get-tag-members tag))
+        (new-tag (read-string "Edit doc-tag: " tag)))
+    (dolist (doc docs)
+      (doc-tags-remove-tag doc (list tag) t)
+      (doc-tags-add-tag doc (list new-tag)))
+    (triples-delete-subject doc-tags-db tag)
+    (message "Doc-tag edited: \“%s\” -> \“%s\”" tag new-tag)))
 
 (defun doc-tags-format-tags (tags)
   "Format list of TAGS into list of string."
@@ -187,9 +223,15 @@ backups in your database after it has been created, run
 
 (defun doc-tags-delete-empty-tags ()
   "Delete all empty tags in doc-tags."
+  (interactive)
   (when-let* ((empties (doc-tags-empty-tags)))
-    (when (y-or-n-p (format "Delete empty tags:\n%s?"
-                            (doc-tags-format-tags empties)))
+    (if (and (> (length empties) 1)
+             (y-or-n-p (format "Empty tags: %s\nSelect for deletion?"
+                               (doc-tags-format-tags empties))))
+        (setq empties (doc-tags-select-tag empties "Delete empty tags: "))
+      (unless (y-or-n-p (format "Delete empty tag:\n\“%s\”?" (car empties)))
+        (setq empties nil)))
+    (when empties
       (mapc
        (lambda (tag)
          (triples-delete-subject doc-tags-db tag))
@@ -201,24 +243,25 @@ backups in your database after it has been created, run
   "Find `doc-tag’ docs by tag.
 Boolean operator AND by default; use prefix arg for OR."
   (interactive)
-  (let* ((bool (if (or current-prefix-arg
-                       (eq this-command 'doc-tags-find-file-or))
-                   (cons " OR " "ANY")
-                 (cons " AND " "ALL")))
-         (tags (doc-tags-select-tag
-                nil (format "Find docs with %s tags: " (cdr bool))))
-         (all-docs (mapcar #'doc-tags-get-tag-members tags))
-         (docs (cond ((string= (car bool) " OR ")
-                      (seq-uniq
-                       (flatten-tree
-                        (mapcar #'doc-tags-get-tag-members tags))))
-                     ((eq (car bool) 'and)
-                      (seq-reduce #'seq-intersection
-                                  all-docs
-                                  (car all-docs))))))
+  (pcase-let* ((`(,bool1 . ,bool2)
+                (if (or current-prefix-arg
+                        (eq this-command 'doc-tags-find-file-or))
+                    (cons " OR " "ANY")
+                  (cons " AND " "ALL")))
+               (tags (doc-tags-select-tag
+                      nil (format "Find docs with %s tags: " bool2)))
+               (all-docs (mapcar #'doc-tags-get-tag-members tags))
+               (docs (cond ((string= bool1 " OR ")
+                            (seq-uniq
+                             (flatten-tree
+                              (mapcar #'doc-tags-get-tag-members tags))))
+                           ((string= bool1 " AND ")
+                            (seq-reduce #'seq-intersection
+                                        all-docs
+                                        (car all-docs))))))
     (if docs
         (doc-tags-open-doc (doc-tags-select-doc docs))
-      (error "No docs with tags: %s" (string-join tags (car bool))))))
+      (error "No docs tagged: %s" (string-join tags bool1)))))
 
 (defun doc-tags-find-file-and ()
   "Find `doc-tag’ docs using AND operator."
@@ -235,18 +278,19 @@ Boolean operator AND by default; use prefix arg for OR."
   (interactive (list (doc-tags-select-doc)))
   (if (file-exists-p doc)
       (find-file doc)
-    (error "File not found: %s" doc)))
+    (when (y-or-n-p (format "Doc not found: %s. Locate file?" doc))
+      (doc-tags-locate-doc doc))))
 
 ;;; completing read functions
 
 (defvar doc-tags-tag-history nil)
 (defvar doc-tags-doc-history nil)
 
-(defun doc-tags-select-tag (&optional doc prompt)
+(defun doc-tags-select-tag (&optional tags prompt)
   "Completing read function for selecting a tag.
-With optional DOC and PROMPT values."
+With optional TAGS and PROMPT values."
   (doc-tags-connect)
-  (let ((tags (or (doc-tags-get-doc-tags doc)
+  (let ((tags (or tags
                   (doc-tags-all-tags))))
     (completing-read-multiple
      (or prompt
@@ -254,6 +298,7 @@ With optional DOC and PROMPT values."
      (lambda (string predicate action)
        (if (eq action 'metadata)
            `(metadata
+             (category . doc-tags-tag)
              (annotation-function . doc-tags-annotate-tag))
          (complete-with-action action tags string predicate)))
      nil t nil 'doc-tags-tag-history)))
@@ -285,15 +330,18 @@ With optional PROMPT and INITIAL value."
   "TRANSFORM completion candidate DOC."
   (if transform
       (file-name-nondirectory doc)
-    (file-name-extension doc)))
+    (file-name-extension doc t)))
 
 (defun doc-tags-annotate-doc (doc)
   "Annotation function for DOC candidates."
   (let* ((doc (substring-no-properties doc))
+         (num (- 60 (length (file-name-nondirectory doc))))
+         (spaces (if (wholenump num)
+                     (make-string num ? )
+                   ""))
          (tags (doc-tags-get-doc-tags doc))
          (format-tags (doc-tags-format-tags tags)))
-    (format " | tags: %s" format-tags)))
-
+    (format "%s  tags: %s" spaces format-tags)))
 
 ;;; embark integration
 
