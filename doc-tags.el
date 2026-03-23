@@ -108,6 +108,12 @@ backups in your database after it has been created, run
    (triples-get-subject doc-tags-db tag)
    :tag/members))
 
+(defun doc-tag-name (doc)
+  "Return name of DOC."
+  (if (file-directory-p doc)
+      (file-name-directory doc)
+    (file-name-nondirectory doc)))
+
 ;;; doc functions
 
 (defun doc-tags-add-doc (doc &optional tags)
@@ -117,20 +123,16 @@ Optionals TAGS"
   (setq doc (expand-file-name doc))
   (doc-tags-connect)
   (when (triples-get-subject doc-tags-db doc) ;; need to skip this when relocating a file
-    (user-error "Selected file already in database \“%s\”" doc-tags-db))
-  (let* ((doc-name (if (file-directory-p doc)
-                       (file-name-nondirectory
-                        (directory-file-name
-                         (file-name-directory doc)))
-                     (file-name-nondirectory doc)))
-         (tags (or tags
+    (user-error "Selected file already in doc-tags database \“%s\”" doc-tags-db))
+  (let* ((tags (or tags
                    (completing-read-multiple
-                    (format "Tags for %s: " doc-name)
+                    (format "Tags for %s: " (doc-tag-name doc))
                     (doc-tags-all-tags) nil nil))))
     (triples-set-subject doc-tags-db doc
                          `(doc :tags ,tags))
     (dolist (tag tags)
-      (triples-set-type doc-tags-db tag 'tag))))
+      (triples-set-type doc-tags-db tag 'tag))
+    (message "Added \“%s\” with tags: %s" doc tags)))
 
 (defun doc-tags-locate-doc (doc)
   "Locate file for missing DOC."
@@ -145,9 +147,9 @@ Optionals TAGS"
 (defun doc-tags-remove-doc (doc)
   "Remove DOC from database."
   (interactive (list (doc-tags-select-doc)))
-  (when (y-or-n-p (format "Remove from database: \“%s\”?" doc))
+  (when (y-or-n-p (format "Remove from doc-tags database: \“%s\”?" doc))
     (triples-delete-subject doc-tags-db doc)
-    (message "Removed \“%s\” from database" doc)
+    (message "Removed \“%s\” from doc-tags database" doc)
     (doc-tags-delete-empty-tags)))
 
 ;;; tag functions
@@ -155,10 +157,11 @@ Optionals TAGS"
 (defun doc-tags-add-tag (doc &optional tags)
   "Add TAGS to DOC."
   (interactive (list (doc-tags-select-doc)))
+  (setq doc (expand-file-name doc))
   (let* ((add-tags (or tags
                        (completing-read-multiple
                         (format "Tags for %s: "
-                                (file-name-nondirectory doc))
+                                (doc-tag-name doc))
                         (doc-tags-all-tags) nil nil)))
          (doc-tags (seq-uniq (flatten-tree (list add-tags (doc-tags-get-doc-tags doc))))))
     (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
@@ -177,13 +180,13 @@ With option TAG and EDIT-TAG."
     (unless (or edit-tag
                 (y-or-n-p (format "Remove tags\n%s\nfrom \“%s\”?"
                                   (doc-tags-format-tags del-tags)
-                                  (file-name-nondirectory doc))))
+                                  (doc-tag-name doc))))
       (user-error "Tag removal cancelled"))
     (if doc-tags
         (triples-set-type doc-tags-db doc 'doc :tags doc-tags)
       (triples-set-subject doc-tags-db doc)
       (unless edit-tag
-        (if (y-or-n-p "Untagged doc. Delete from database [y]? Add other tag [n]?")
+        (if (y-or-n-p "Untagged doc. Delete from doc-tags database [y]? Add other tag [n]?")
             (doc-tags-remove-doc doc)
           (setq doc-tags (doc-tags-select-tag))
           (doc-tags-add-tag doc doc-tags))))
@@ -329,13 +332,16 @@ With optional PROMPT and INITIAL value."
 (defun doc-tags-group-function (doc transform)
   "TRANSFORM completion candidate DOC."
   (if transform
-      (file-name-nondirectory doc)
-    (file-name-extension doc t)))
+      (if (file-directory-p doc)
+          (directory-file-name doc)
+        (file-name-nondirectory doc))
+    (if (file-directory-p doc) "Dir"
+      (file-name-extension doc t))))
 
 (defun doc-tags-annotate-doc (doc)
   "Annotation function for DOC candidates."
   (let* ((doc (substring-no-properties doc))
-         (num (- 60 (length (file-name-nondirectory doc))))
+         (num (- 60 (length (doc-tag-name doc))))
          (spaces (if (wholenump num)
                      (make-string num ? )
                    ""))
